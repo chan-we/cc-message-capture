@@ -219,7 +219,7 @@ pub fn install_ca_to_keychain(mitmdump_path: &PathBuf) -> Result<String, String>
 
     #[cfg(target_os = "windows")]
     {
-        use std::env;
+        let cert_path = get_ca_cert_path();
 
         // On Windows, use certutil to add the certificate to the store
         // Convert PEM to DER format for Windows
