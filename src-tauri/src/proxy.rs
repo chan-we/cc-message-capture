@@ -38,14 +38,14 @@ impl MitmdumpProcess {
         cmd.args(["--listen-port", &port.to_string()])
             .args(["--set", "flow_detail=0"])
             .args(["--quiet"])
-            .args(["-s", addon_path.to_str().ok_or("Invalid addon path")?])
+            .args(["-s", addon_path.to_str().ok_or("无效的插件路径")?])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
 
         let mut child = cmd
             .spawn()
-            .map_err(|e| format!("Failed to spawn mitmdump: {}", e))?;
+            .map_err(|e| format!("启动 mitmdump 失败: {}", e))?;
 
         // Wait briefly and check if mitmdump is still running
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -71,19 +71,19 @@ impl MitmdumpProcess {
                 tracing::info!("mitmdump process started successfully (pid: {:?})", child.id());
             }
             Err(e) => {
-                return Err(format!("Failed to check mitmdump status: {}", e));
+                return Err(format!("检查 mitmdump 状态失败: {}", e));
             }
         }
 
         let stdout = child
             .stdout
             .take()
-            .ok_or("Failed to capture mitmdump stdout")?;
+            .ok_or("无法捕获 mitmdump 标准输出")?;
 
         let stderr = child
             .stderr
             .take()
-            .ok_or("Failed to capture mitmdump stderr")?;
+            .ok_or("无法捕获 mitmdump 标准错误")?;
 
         // Spawn task to read stdout (JSON Lines from addon)
         let app_for_stdout = app_handle.clone();
@@ -102,7 +102,7 @@ impl MitmdumpProcess {
                         let _ = app_for_stdout.emit("captured-message", &msg);
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to parse mitmdump output: {} | {}", e, &line[..line.len().min(200)]);
+                        tracing::warn!("解析 mitmdump 输出失败: {} | {}", e, &line[..line.len().min(200)]);
                     }
                 }
             }
@@ -150,7 +150,7 @@ impl MitmdumpProcess {
         self.child
             .kill()
             .await
-            .map_err(|e| format!("Failed to kill mitmdump: {}", e))?;
+            .map_err(|e| format!("终止 mitmdump 失败: {}", e))?;
 
         Ok(())
     }

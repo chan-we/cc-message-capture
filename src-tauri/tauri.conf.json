@@ -32,8 +32,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "resources/addon_capture.py",
-      "resources/mitmproxy.app"
+      "resources/addon_capture.py"
     ]
   }
 }

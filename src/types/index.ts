@@ -15,3 +15,9 @@ export interface ProxyStatus {
   running: boolean
   port: number
 }
+
+export interface CertStatus {
+  installed: boolean
+  method: string
+  details: string
+}

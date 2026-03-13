@@ -7,10 +7,10 @@ import {
   Tag,
   Tabs,
   message,
-  Tooltip,
   Empty,
   Badge,
   Splitter,
+  Dropdown,
 } from 'antd'
 import {
   PlayCircleOutlined,
@@ -21,7 +21,8 @@ import {
 } from '@ant-design/icons'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { CapturedMessage, ProxyStatus } from '@/types'
+import { save } from '@tauri-apps/plugin-dialog'
+import type { CapturedMessage, ProxyStatus, CertStatus } from '@/types'
 
 const methodColors: Record<string, string> = {
   GET: 'blue',
@@ -105,12 +106,18 @@ export default function Capture() {
   const [selected, setSelected] = useState<CapturedMessage | null>(null)
   const [running, setRunning] = useState(false)
   const [port, setPort] = useState(9898)
+  const [certStatus, setCertStatus] = useState<CertStatus | null>(null)
   const listenerRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     invoke<ProxyStatus>('get_proxy_status').then((status) => {
       setRunning(status.running)
       setPort(status.port)
+    })
+
+    // Check certificate status on mount
+    invoke<CertStatus>('check_cert_status').then((status) => {
+      setCertStatus(status)
     })
 
     const setup = async () => {
@@ -148,19 +155,59 @@ export default function Capture() {
 
   const handleExportCert = async () => {
     try {
-      const path = await invoke<string>('get_ca_cert_path')
-      message.success(`CA 证书路径: ${path}`)
+      // Open save dialog to let user choose export location
+      const destPath = await save({
+        defaultPath: 'mitmproxy-ca-cert.pem',
+        filters: [{ name: 'Certificate', extensions: ['pem', 'crt', 'cer'] }],
+      })
+
+      if (!destPath) {
+        return // User cancelled
+      }
+
+      await invoke('export_ca_cert', { destPath })
+      message.success(`证书已导出到: ${destPath}`)
     } catch (e) {
-      message.error(`失败: ${e}`)
+      message.error(`导出失败: ${e}`)
     }
   }
 
   const handleInstallCert = async () => {
     try {
-      await invoke<string>('install_ca_cert')
-      message.success('CA 证书已安装到系统钥匙串')
+      const result = await invoke<string>('install_ca_cert')
+      message.success(result)
+      // Refresh status after install
+      const status = await invoke<CertStatus>('check_cert_status')
+      setCertStatus(status)
     } catch (e) {
       message.error(`安装失败: ${e}`)
+    }
+  }
+
+  const handleCheckCertStatus = async () => {
+    try {
+      const status = await invoke<CertStatus>('check_cert_status')
+      if (status.installed) {
+        message.success(status.details)
+      } else {
+        message.warning(status.details)
+      }
+      return status
+    } catch (e) {
+      message.error(`检查失败: ${e}`)
+      return null
+    }
+  }
+
+  const handleUninstallCert = async () => {
+    try {
+      const result = await invoke<string>('uninstall_ca_cert')
+      message.success(result)
+      // Refresh status after uninstall
+      const status = await invoke<CertStatus>('check_cert_status')
+      setCertStatus(status)
+    } catch (e) {
+      message.error(`卸载失败: ${e}`)
     }
   }
 
@@ -235,16 +282,42 @@ export default function Capture() {
             max={65535}
             style={{ width: 160 }}
           />
-          <Tooltip title="导出 CA 证书">
-            <Button icon={<SafetyCertificateOutlined />} onClick={handleExportCert}>
-              CA 证书
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'status',
+                  label: certStatus?.installed ? '已安装' : '未安装',
+                  onClick: handleCheckCertStatus,
+                },
+                { type: 'divider' },
+                {
+                  key: 'export',
+                  label: '导出证书',
+                  onClick: handleExportCert,
+                },
+                ...(certStatus?.installed
+                  ? [
+                      {
+                        key: 'uninstall',
+                        label: '卸载证书',
+                        onClick: handleUninstallCert,
+                      },
+                    ]
+                  : [
+                      {
+                        key: 'install',
+                        label: '安装证书',
+                        onClick: handleInstallCert,
+                      },
+                    ]),
+              ],
+            }}
+          >
+            <Button icon={<SafetyCertificateOutlined />}>
+              证书状态 <Badge status={certStatus?.installed ? 'success' : 'default'} />
             </Button>
-          </Tooltip>
-          <Tooltip title="安装 CA 证书到系统钥匙串（首次使用需安装）">
-            <Button icon={<SafetyCertificateOutlined />} onClick={handleInstallCert} type="dashed">
-              安装证书
-            </Button>
-          </Tooltip>
+          </Dropdown>
           <Button
             icon={<DeleteOutlined />}
             onClick={() => {

@@ -23,3 +23,6 @@ src-tauri/target/
 
 # Sidecar binaries (mitmproxy)
 src-tauri/resources/mitmproxy.app/
+
+# Python cache
+__pycache__/
