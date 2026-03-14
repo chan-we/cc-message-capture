@@ -1,18 +1,24 @@
 mod cert;
+mod download;
 mod proxy;
 
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tracing_subscriber::EnvFilter;
 
-/// Helper function to find mitmdump binary path
+/// Helper function to find mitmdump binary path.
+/// Priority: app_data_dir (downloaded) > platform-specific fallbacks.
 #[allow(unused_variables)]
 fn get_mitmdump_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    // Priority 1: Check downloaded binary in app_data_dir
+    if let Ok(Some(path)) = download::installed_mitmdump_path(app) {
+        return Ok(path);
+    }
+
+    // Priority 2: Platform-specific fallbacks
     #[cfg(target_os = "macos")]
     {
-        // In dev mode, use the original source path to preserve code signatures.
-        // Tauri copies resources to target/debug/resources/ which breaks macOS
-        // code signatures on the embedded Python framework.
+        // In dev mode, check local resources for convenience
         #[cfg(debug_assertions)]
         {
             let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -22,12 +28,7 @@ fn get_mitmdump_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Strin
             }
         }
 
-        app.path()
-            .resolve(
-                "resources/mitmproxy.app/Contents/MacOS/mitmdump",
-                tauri::path::BaseDirectory::Resource,
-            )
-            .map_err(|e| format!("无法找到 mitmdump 二进制文件: {}", e))
+        Err("mitmdump 未安装，请点击启动代理以自动下载".to_string())
     }
 
     #[cfg(target_os = "linux")]
@@ -48,7 +49,7 @@ fn get_mitmdump_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Strin
             ];
             paths.into_iter().find(|p| p.exists())
         })
-            .ok_or_else(|| "mitmdump 未在 PATH 或常见位置中找到".to_string())
+            .ok_or_else(|| "mitmdump 未安装，请点击启动代理以自动下载".to_string())
     }
 
     #[cfg(target_os = "windows")]
@@ -86,7 +87,7 @@ fn get_mitmdump_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Strin
                     })
                     .filter(|p| p.exists())
             })
-            .ok_or_else(|| "mitmdump 未在 PATH 或 Python Scripts 目录中找到".to_string())
+            .ok_or_else(|| "mitmdump 未安装，请点击启动代理以自动下载".to_string())
     }
 }
 
@@ -224,6 +225,23 @@ async fn install_ca_cert(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn check_mitmdump(app: tauri::AppHandle) -> Result<bool, String> {
+    let path = download::installed_mitmdump_path(&app)?;
+    Ok(path.is_some())
+}
+
+#[tauri::command]
+async fn download_mitmdump(app: tauri::AppHandle) -> Result<String, String> {
+    let path = download::download_and_extract(app).await?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn uninstall_mitmdump(app: tauri::AppHandle) -> Result<(), String> {
+    download::uninstall(&app)
+}
+
+#[tauri::command]
 async fn check_cert_status() -> Result<cert::CertStatus, String> {
     Ok(cert::check_cert_installed())
 }
@@ -254,6 +272,9 @@ pub fn run() {
             install_ca_cert,
             check_cert_status,
             uninstall_ca_cert,
+            check_mitmdump,
+            download_mitmdump,
+            uninstall_mitmdump,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

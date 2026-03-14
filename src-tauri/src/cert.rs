@@ -38,7 +38,7 @@ pub fn get_ca_cert_path() -> PathBuf {
 /// original signature, causing dlopen to fail.
 #[cfg(target_os = "macos")]
 pub fn ensure_executable(mitmdump_path: &PathBuf) -> Result<(), String> {
-    // Strip quarantine attribute from the .app bundle
+    // Strip quarantine attribute from the .app bundle (if within one)
     if let Some(app_dir) = mitmdump_path
         .ancestors()
         .find(|p| p.extension().map_or(false, |ext| ext == "app"))
@@ -48,6 +48,13 @@ pub fn ensure_executable(mitmdump_path: &PathBuf) -> Result<(), String> {
             .arg(app_dir)
             .output();
     }
+
+    // Also strip quarantine from the binary itself (standalone download case)
+    let _ = std::process::Command::new("xattr")
+        .args(["-d", "com.apple.quarantine"])
+        .arg(mitmdump_path)
+        .output();
+
     Ok(())
 }
 

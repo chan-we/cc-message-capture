@@ -11,6 +11,8 @@ import {
   Badge,
   Splitter,
   Dropdown,
+  Modal,
+  Progress,
 } from 'antd'
 import {
   PlayCircleOutlined,
@@ -19,6 +21,8 @@ import {
   SafetyCertificateOutlined,
   CopyOutlined,
   RobotOutlined,
+  DownloadOutlined,
+  ToolOutlined,
 } from '@ant-design/icons'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
@@ -110,6 +114,9 @@ export default function Capture() {
   const [running, setRunning] = useState(false)
   const [port, setPort] = useState(9898)
   const [certStatus, setCertStatus] = useState<CertStatus | null>(null)
+  const [mitmdumpInstalled, setMitmdumpInstalled] = useState<boolean | null>(null)
+  const [downloading, setDownloading] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState({ downloaded: 0, total: 0, stage: '' })
   const listenerRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
@@ -121,6 +128,11 @@ export default function Capture() {
     // Check certificate status on mount
     invoke<CertStatus>('check_cert_status').then((status) => {
       setCertStatus(status)
+    })
+
+    // Check mitmdump installation status on mount
+    invoke<boolean>('check_mitmdump').then((installed) => {
+      setMitmdumpInstalled(installed)
     })
 
     const setup = async () => {
@@ -138,6 +150,35 @@ export default function Capture() {
 
   const handleStart = async () => {
     try {
+      // Check if mitmdump is available
+      const exists = await invoke<boolean>('check_mitmdump')
+
+      if (!exists) {
+        // Download mitmdump with progress tracking
+        setDownloading(true)
+        setDownloadProgress({ downloaded: 0, total: 0, stage: 'downloading' })
+
+        const unlisten = await listen<{ downloaded: number; total: number; stage: string }>(
+          'mitmdump-download-progress',
+          (event) => {
+            setDownloadProgress(event.payload)
+          }
+        )
+
+        try {
+          await invoke('download_mitmdump')
+          setMitmdumpInstalled(true)
+          message.success('mitmdump 下载完成')
+        } catch (e) {
+          message.error(`下载失败: ${e}`)
+          return
+        } finally {
+          unlisten()
+          setDownloading(false)
+        }
+      }
+
+      // Start proxy
       await invoke('start_proxy', { port })
       setRunning(true)
       message.success(`代理已启动，端口 ${port}`)
@@ -214,6 +255,53 @@ export default function Capture() {
     }
   }
 
+  const handleInstallMitmdump = async () => {
+    setDownloading(true)
+    setDownloadProgress({ downloaded: 0, total: 0, stage: 'downloading' })
+
+    const unlisten = await listen<{ downloaded: number; total: number; stage: string }>(
+      'mitmdump-download-progress',
+      (event) => {
+        setDownloadProgress(event.payload)
+      }
+    )
+
+    try {
+      await invoke('download_mitmdump')
+      setMitmdumpInstalled(true)
+      message.success('mitmdump 安装完成')
+    } catch (e) {
+      message.error(`安装失败: ${e}`)
+    } finally {
+      unlisten()
+      setDownloading(false)
+    }
+  }
+
+  const handleUninstallMitmdump = async () => {
+    try {
+      await invoke('uninstall_mitmdump')
+      setMitmdumpInstalled(false)
+      message.success('mitmdump 已卸载')
+    } catch (e) {
+      message.error(`卸载失败: ${e}`)
+    }
+  }
+
+  const handleCheckMitmdump = async () => {
+    try {
+      const installed = await invoke<boolean>('check_mitmdump')
+      setMitmdumpInstalled(installed)
+      if (installed) {
+        message.success('mitmdump 已安装')
+      } else {
+        message.warning('mitmdump 未安装')
+      }
+    } catch (e) {
+      message.error(`检查失败: ${e}`)
+    }
+  }
+
   const columns = [
     {
       title: '方法',
@@ -271,6 +359,7 @@ export default function Capture() {
               type="primary"
               icon={<PlayCircleOutlined />}
               onClick={handleStart}
+              loading={downloading}
             >
               启动
             </Button>
@@ -285,6 +374,39 @@ export default function Capture() {
             max={65535}
             style={{ width: 160 }}
           />
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'status',
+                  label: mitmdumpInstalled ? '已安装' : '未安装',
+                  onClick: handleCheckMitmdump,
+                },
+                { type: 'divider' },
+                ...(mitmdumpInstalled
+                  ? [
+                      {
+                        key: 'uninstall',
+                        label: '卸载 mitmdump',
+                        onClick: handleUninstallMitmdump,
+                        disabled: running,
+                      },
+                    ]
+                  : [
+                      {
+                        key: 'install',
+                        label: '安装 mitmdump',
+                        onClick: handleInstallMitmdump,
+                        disabled: downloading,
+                      },
+                    ]),
+              ],
+            }}
+          >
+            <Button icon={<ToolOutlined />}>
+              mitmdump <Badge status={mitmdumpInstalled ? 'success' : 'default'} />
+            </Button>
+          </Dropdown>
           <Dropdown
             menu={{
               items: [
@@ -426,6 +548,33 @@ export default function Capture() {
           </div>
         </Splitter.Panel>
       </Splitter>
+
+      <Modal
+        title="正在下载 mitmdump"
+        open={downloading}
+        closable={false}
+        footer={null}
+        maskClosable={false}
+      >
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <DownloadOutlined style={{ fontSize: 32, color: '#1890ff', marginBottom: 16 }} />
+          <Progress
+            percent={
+              downloadProgress.total > 0
+                ? Math.round((downloadProgress.downloaded / downloadProgress.total) * 100)
+                : 0
+            }
+            status="active"
+          />
+          <p style={{ marginTop: 12, color: '#666' }}>
+            {downloadProgress.stage === 'extracting'
+              ? '正在解压...'
+              : downloadProgress.total > 0
+                ? `${(downloadProgress.downloaded / 1024 / 1024).toFixed(1)} / ${(downloadProgress.total / 1024 / 1024).toFixed(1)} MB`
+                : '正在连接...'}
+          </p>
+        </div>
+      </Modal>
     </div>
   )
 }
