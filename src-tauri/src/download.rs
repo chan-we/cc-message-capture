@@ -257,11 +257,12 @@ fn extract_archive(dir: &PathBuf, data: &[u8]) -> Result<(), String> {
             .by_index(i)
             .map_err(|e| format!("读取 zip 条目失败: {}", e))?;
 
-        if file
+        let is_mitmdump = file
             .enclosed_name()
-            .and_then(|p| p.file_name())
-            .map_or(false, |n| n == binary_name)
-        {
+            .map(|p| p.file_name().map_or(false, |n| n == binary_name))
+            .unwrap_or(false);
+
+        if is_mitmdump {
             let mut content = Vec::new();
             file.read_to_end(&mut content)
                 .map_err(|e| format!("读取 mitmdump.exe 内容失败: {}", e))?;
