@@ -18,11 +18,14 @@ import {
   DeleteOutlined,
   SafetyCertificateOutlined,
   CopyOutlined,
+  RobotOutlined,
 } from '@ant-design/icons'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { save } from '@tauri-apps/plugin-dialog'
 import type { CapturedMessage, ProxyStatus, CertStatus } from '@/types'
+import { isClaudeApiRequest } from '@/services/claudeParser'
+import ClaudeMessageViewer from '@/components/ClaudeMessageViewer'
 
 const methodColors: Record<string, string> = {
   GET: 'blue',
@@ -353,8 +356,23 @@ export default function Capture() {
           <div style={{ height: '100%', overflow: 'auto', padding: '0 12px' }}>
             {selected ? (
               <Tabs
-                defaultActiveKey="request"
+                defaultActiveKey={isClaudeApiRequest(selected) ? 'claude' : 'request'}
+                key={selected.id}
                 items={[
+                  ...(isClaudeApiRequest(selected)
+                    ? [
+                        {
+                          key: 'claude',
+                          label: (
+                            <span>
+                              <RobotOutlined style={{ marginRight: 4 }} />
+                              Claude 对话
+                            </span>
+                          ),
+                          children: <ClaudeMessageViewer message={selected} />,
+                        },
+                      ]
+                    : []),
                   {
                     key: 'request',
                     label: '请求',

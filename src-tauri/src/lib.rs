@@ -10,6 +10,18 @@ use tracing_subscriber::EnvFilter;
 fn get_mitmdump_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     #[cfg(target_os = "macos")]
     {
+        // In dev mode, use the original source path to preserve code signatures.
+        // Tauri copies resources to target/debug/resources/ which breaks macOS
+        // code signatures on the embedded Python framework.
+        #[cfg(debug_assertions)]
+        {
+            let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("resources/mitmproxy.app/Contents/MacOS/mitmdump");
+            if dev_path.exists() {
+                return Ok(dev_path);
+            }
+        }
+
         app.path()
             .resolve(
                 "resources/mitmproxy.app/Contents/MacOS/mitmdump",
@@ -205,6 +217,7 @@ async fn get_ca_cert_path() -> Result<String, String> {
 async fn install_ca_cert(app: tauri::AppHandle) -> Result<String, String> {
     // Generate cert first if needed
     let mitmdump_path = get_mitmdump_path(&app)?;
+    tracing::info!("install_ca_cert: mitmdump_path={}, exists={}", mitmdump_path.display(), mitmdump_path.exists());
     cert::ensure_ca_cert(&mitmdump_path)?;
 
     cert::install_ca_to_keychain(&mitmdump_path)
