@@ -1,5 +1,8 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager};
+
+static DOWNLOAD_CANCELLED: AtomicBool = AtomicBool::new(false);
 
 const MITMPROXY_VERSION: &str = "12.2.1";
 const MITMDUMP_DIR_NAME: &str = "mitmdump";
@@ -57,12 +60,12 @@ fn mitmdump_binary_path(dir: &PathBuf) -> PathBuf {
     }
 }
 
-/// Constructs the download URL from snapshots.mitmproxy.org for the current platform.
+/// Constructs the download URL for the current platform.
 fn download_url() -> Result<String, String> {
     let archive_name = platform_archive_name()?;
     Ok(format!(
-        "https://snapshots.mitmproxy.org/{}/{}",
-        MITMPROXY_VERSION, archive_name
+        "https://boss.hdslb.com/bee/cc-message-capture/{}",
+        archive_name
     ))
 }
 
@@ -106,8 +109,15 @@ pub fn uninstall(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Cancel an in-progress download.
+pub fn cancel_download() {
+    DOWNLOAD_CANCELLED.store(true, Ordering::SeqCst);
+}
+
 /// Downloads and extracts mitmdump, emitting progress events.
 pub async fn download_and_extract(app: AppHandle) -> Result<PathBuf, String> {
+    DOWNLOAD_CANCELLED.store(false, Ordering::SeqCst);
+
     let url = download_url()?;
     let dir = mitmdump_install_dir(&app)?;
 
@@ -140,6 +150,12 @@ pub async fn download_and_extract(app: AppHandle) -> Result<PathBuf, String> {
     let mut file_data = Vec::with_capacity(total as usize);
 
     while let Some(chunk) = stream.next().await {
+        if DOWNLOAD_CANCELLED.load(Ordering::SeqCst) {
+            // Clean up install directory
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err("下载已取消".to_string());
+        }
+
         let chunk = chunk.map_err(|e| format!("下载中断: {}", e))?;
         file_data.extend_from_slice(&chunk);
         downloaded += chunk.len() as u64;

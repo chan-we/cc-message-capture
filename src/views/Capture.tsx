@@ -168,7 +168,7 @@ export default function Capture() {
         try {
           await invoke('download_mitmdump')
           setMitmdumpInstalled(true)
-          message.success('mitmdump 下载完成')
+          message.success('mitmproxy 下载完成')
         } catch (e) {
           message.error(`下载失败: ${e}`)
           return
@@ -269,7 +269,7 @@ export default function Capture() {
     try {
       await invoke('download_mitmdump')
       setMitmdumpInstalled(true)
-      message.success('mitmdump 安装完成')
+      message.success('mitmproxy 安装完成')
     } catch (e) {
       message.error(`安装失败: ${e}`)
     } finally {
@@ -282,7 +282,7 @@ export default function Capture() {
     try {
       await invoke('uninstall_mitmdump')
       setMitmdumpInstalled(false)
-      message.success('mitmdump 已卸载')
+      message.success('mitmproxy 已卸载')
     } catch (e) {
       message.error(`卸载失败: ${e}`)
     }
@@ -293,9 +293,9 @@ export default function Capture() {
       const installed = await invoke<boolean>('check_mitmdump')
       setMitmdumpInstalled(installed)
       if (installed) {
-        message.success('mitmdump 已安装')
+        message.success('mitmproxy 已安装')
       } else {
-        message.warning('mitmdump 未安装')
+        message.warning('mitmproxy 未安装')
       }
     } catch (e) {
       message.error(`检查失败: ${e}`)
@@ -387,7 +387,7 @@ export default function Capture() {
                   ? [
                       {
                         key: 'uninstall',
-                        label: '卸载 mitmdump',
+                        label: '卸载 mitmproxy',
                         onClick: handleUninstallMitmdump,
                         disabled: running,
                       },
@@ -395,7 +395,7 @@ export default function Capture() {
                   : [
                       {
                         key: 'install',
-                        label: '安装 mitmdump',
+                        label: '安装 mitmproxy',
                         onClick: handleInstallMitmdump,
                         disabled: downloading,
                       },
@@ -404,7 +404,7 @@ export default function Capture() {
             }}
           >
             <Button icon={<ToolOutlined />}>
-              mitmdump <Badge status={mitmdumpInstalled ? 'success' : 'default'} />
+              mitmproxy <Badge status={mitmdumpInstalled ? 'success' : 'default'} />
             </Button>
           </Dropdown>
           <Dropdown
@@ -550,10 +550,24 @@ export default function Capture() {
       </Splitter>
 
       <Modal
-        title="正在下载 mitmdump"
+        title="正在下载 mitmproxy"
         open={downloading}
         closable={false}
-        footer={null}
+        footer={
+          downloadProgress.stage !== 'extracting' ? (
+            <Button
+              onClick={async () => {
+                try {
+                  await invoke('cancel_download')
+                } catch (e) {
+                  message.error(`取消失败: ${e}`)
+                }
+              }}
+            >
+              取消
+            </Button>
+          ) : null
+        }
         maskClosable={false}
       >
         <div style={{ textAlign: 'center', padding: '20px 0' }}>

@@ -242,6 +242,12 @@ async fn uninstall_mitmdump(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn cancel_download() -> Result<(), String> {
+    download::cancel_download();
+    Ok(())
+}
+
+#[tauri::command]
 async fn check_cert_status() -> Result<cert::CertStatus, String> {
     Ok(cert::check_cert_installed())
 }
@@ -275,6 +281,7 @@ pub fn run() {
             check_mitmdump,
             download_mitmdump,
             uninstall_mitmdump,
+            cancel_download,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
