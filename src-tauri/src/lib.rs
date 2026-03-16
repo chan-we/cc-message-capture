@@ -131,6 +131,9 @@ async fn start_proxy(
         }
     }
 
+    // Kill any leftover mitmdump from a previous crash/restart
+    proxy::kill_leftover_mitmdump(port);
+
     // Resolve mitmdump binary path
     let mitmdump_path = get_mitmdump_path(&app)?;
     if !mitmdump_path.exists() {

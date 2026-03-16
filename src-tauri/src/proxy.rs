@@ -24,6 +24,80 @@ pub struct MitmdumpProcess {
     child: Child,
 }
 
+/// Kill any leftover mitmdump processes listening on the given port.
+/// This handles the case where the app was killed/crashed but mitmdump survived.
+pub fn kill_leftover_mitmdump(port: u16) {
+    #[cfg(unix)]
+    {
+        // Use lsof to find processes listening on the port
+        let output = std::process::Command::new("lsof")
+            .args(["-ti", &format!(":{}", port)])
+            .output();
+
+        if let Ok(output) = output {
+            let pids = String::from_utf8_lossy(&output.stdout);
+            for pid_str in pids.split_whitespace() {
+                if let Ok(pid) = pid_str.trim().parse::<i32>() {
+                    // Verify it's actually a mitmdump process before killing
+                    let ps_output = std::process::Command::new("ps")
+                        .args(["-p", &pid.to_string(), "-o", "comm="])
+                        .output();
+                    if let Ok(ps_out) = ps_output {
+                        let comm = String::from_utf8_lossy(&ps_out.stdout);
+                        if comm.contains("mitmdump") {
+                            tracing::warn!(
+                                "Killing leftover mitmdump process (pid={}) on port {}",
+                                pid, port
+                            );
+                            unsafe { libc::kill(pid, libc::SIGTERM); }
+                            // Give it a moment to exit
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        // Use netstat to find PIDs on the port, then taskkill if it's mitmdump
+        let output = std::process::Command::new("netstat")
+            .args(["-ano"])
+            .output();
+
+        if let Ok(output) = output {
+            let text = String::from_utf8_lossy(&output.stdout);
+            let port_str = format!(":{}", port);
+            for line in text.lines() {
+                if line.contains(&port_str) && line.contains("LISTENING") {
+                    if let Some(pid_str) = line.split_whitespace().last() {
+                        if let Ok(pid) = pid_str.parse::<u32>() {
+                            // Check if it's mitmdump
+                            let tasklist = std::process::Command::new("tasklist")
+                                .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
+                                .output();
+                            if let Ok(tl) = tasklist {
+                                let name = String::from_utf8_lossy(&tl.stdout);
+                                if name.contains("mitmdump") {
+                                    tracing::warn!(
+                                        "Killing leftover mitmdump process (pid={}) on port {}",
+                                        pid, port
+                                    );
+                                    let _ = std::process::Command::new("taskkill")
+                                        .args(["/PID", &pid.to_string(), "/F"])
+                                        .output();
+                                    std::thread::sleep(std::time::Duration::from_millis(500));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 impl MitmdumpProcess {
     pub async fn start(
         app_handle: tauri::AppHandle,
