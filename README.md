@@ -7,10 +7,14 @@
 由于应用未经过 Apple 签名，macOS 可能会提示"已损坏，无法打开"。请在终端运行以下命令解除限制：
 
 ```bash
-xattr -cr /Applications/cc-message-capture.app
+xattr -c /Applications/cc-message-capture.app
 ```
 
-如果应用不在 `/Applications` 目录，请替换为实际路径。
+如果应用不在 `/Applications` 目录，请替换为实际路径。如果仍无法打开，可尝试递归清除：
+
+```bash
+find /Applications/cc-message-capture.app -exec xattr -c {} \;
+```
 
 ## 使用指南
 
