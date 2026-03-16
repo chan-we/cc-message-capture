@@ -2,50 +2,15 @@
 
 一个基于 Tauri v2 的 Claude API 消息抓包工具。通过本地 MITM（中间人）代理拦截 HTTPS 流量，捕获并展示 Claude API 的请求与响应内容。
 
-## 技术栈
+## macOS 安装说明
 
-- **后端**: Rust + Tauri v2 + hudsucker（MITM 代理）
-- **前端**: React 18 + Ant Design 5 + TypeScript
-- **构建**: Vite + pnpm
-
-## 功能
-
-- HTTPS 中间人代理，透明拦截加密流量
-- 可配置的 URL 过滤规则（支持通配符 `*`）
-- 实时捕获请求/响应，推送至前端展示
-- 请求详情查看：Headers、Body（自动格式化 JSON）
-- 一键复制请求/响应内容
-- 自动生成并管理 CA 根证书
-
-## 环境要求
-
-- [Rust](https://www.rust-lang.org/tools/install) >= 1.70
-- [Node.js](https://nodejs.org/) >= 18
-- [pnpm](https://pnpm.io/) >= 8
-- macOS / Windows / Linux
-
-## 快速开始
-
-### 1. 安装依赖
+由于应用未经过 Apple 签名，macOS 可能会提示"已损坏，无法打开"。请在终端运行以下命令解除限制：
 
 ```bash
-cd cc-message-capture
-pnpm install
+xattr -cr /Applications/cc-message-capture.app
 ```
 
-### 2. 启动开发模式
-
-```bash
-pnpm tauri dev
-```
-
-首次启动会编译 Rust 依赖，耗时较长，后续启动会很快。
-
-### 3. 构建生产版本
-
-```bash
-pnpm tauri build
-```
+如果应用不在 `/Applications` 目录，请替换为实际路径。
 
 ## 使用指南
 
@@ -185,6 +150,51 @@ client = anthropic.Anthropic(
 | **Request Tab** | 查看请求方法、URL、Headers、Body |
 | **Response Tab** | 查看状态码、耗时、Headers、Body |
 | **Copy 按钮** | 一键复制 Body 内容 |
+
+## 技术栈
+
+- **后端**: Rust + Tauri v2 + hudsucker（MITM 代理）
+- **前端**: React 18 + Ant Design 5 + TypeScript
+- **构建**: Vite + pnpm
+
+## 功能
+
+- HTTPS 中间人代理，透明拦截加密流量
+- 可配置的 URL 过滤规则（支持通配符 `*`）
+- 实时捕获请求/响应，推送至前端展示
+- 请求详情查看：Headers、Body（自动格式化 JSON）
+- 一键复制请求/响应内容
+- 自动生成并管理 CA 根证书
+
+## 环境要求
+
+- [Rust](https://www.rust-lang.org/tools/install) >= 1.70
+- [Node.js](https://nodejs.org/) >= 18
+- [pnpm](https://pnpm.io/) >= 8
+- macOS / Windows / Linux
+
+## 快速开始
+
+### 1. 安装依赖
+
+```bash
+cd cc-message-capture
+pnpm install
+```
+
+### 2. 启动开发模式
+
+```bash
+pnpm tauri dev
+```
+
+首次启动会编译 Rust 依赖，耗时较长，后续启动会很快。
+
+### 3. 构建生产版本
+
+```bash
+pnpm tauri build
+```
 
 ## 项目结构
 
