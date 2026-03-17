@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Tag, Collapse, Empty, Descriptions, Statistic, Space, Typography, Tooltip } from 'antd'
+import { Tag, Tabs, Empty, Descriptions, Statistic, Space, Typography, Tooltip } from 'antd'
 import {
   ThunderboltOutlined,
   MessageOutlined,
@@ -532,155 +532,142 @@ export default function ClaudeMessageViewer({ message }: ClaudeMessageViewerProp
         </div>
       )}
 
-      {/* Response content blocks */}
-      {parsedResponse && parsedResponse.blocks.length > 0 && (
-        <div style={{ marginBottom: 24 }}>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              marginBottom: 10,
-              color: '#262626',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <RobotOutlined style={{ color: '#1677ff' }} />
-            助手响应
-            <Tag style={{ margin: 0, marginLeft: 4 }}>{parsedResponse.blocks.length} 个块</Tag>
-          </div>
-          {parsedResponse.blocks
-            .filter(Boolean)
-            .map((block, idx) => (
-              <ContentBlockView key={idx} block={block} index={idx} />
-            ))}
-        </div>
-      )}
-
-      {/* Request messages (conversation history) */}
-      {parsedRequest && parsedRequest.messages.length > 0 && (
-        <Collapse
-          ghost
-          style={{ marginBottom: 16 }}
-          items={[
-            {
-              key: 'messages',
-              label: (
-                <Space>
-                  <ThunderboltOutlined />
-                  <span>请求对话历史</span>
-                  <Tag>{parsedRequest.messages.length} 条消息</Tag>
-                </Space>
-              ),
-              children: (
-                <div style={{ maxHeight: 600, overflow: 'auto' }}>
-                  {parsedRequest.messages.map((msg, idx) => (
-                    <MessageBubble key={idx} msg={msg} index={idx} />
-                  ))}
-                </div>
-              ),
-            },
-          ]}
-        />
-      )}
-
-      {/* System instructions */}
-      {parsedRequest?.system && parsedRequest.system.length > 0 && (
-        <Collapse
-          ghost
-          items={[
-            {
-              key: 'system',
-              label: (
-                <Space>
-                  <span>系统指令</span>
-                  <Tag>{parsedRequest.system.length} 个块</Tag>
-                </Space>
-              ),
-              children: (
-                <div style={{ maxHeight: 400, overflow: 'auto' }}>
-                  {parsedRequest.system.map((item: any, i: number) => (
-                    <div
-                      key={i}
-                      style={{
-                        background: '#fafafa',
-                        border: '1px solid #f0f0f0',
-                        borderRadius: 8,
-                        padding: 12,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <Tag style={{ marginBottom: 6 }}>{item.type || 'text'}</Tag>
-                      <Paragraph
-                        style={{
-                          whiteSpace: 'pre-wrap',
-                          fontSize: 12,
-                          lineHeight: 1.6,
-                          margin: 0,
-                          maxHeight: 200,
-                          overflow: 'auto',
-                        }}
-                      >
-                        {item.text || JSON.stringify(item, null, 2)}
-                      </Paragraph>
+      {/* Tabs for response, history, system, tools */}
+      <Tabs
+        defaultActiveKey="response"
+        items={[
+          ...(parsedResponse && parsedResponse.blocks.length > 0
+            ? [
+                {
+                  key: 'response',
+                  label: (
+                    <Space size={4}>
+                      <RobotOutlined />
+                      <span>助手响应</span>
+                      <Tag style={{ margin: 0 }}>{parsedResponse.blocks.length}</Tag>
+                    </Space>
+                  ),
+                  children: (
+                    <div>
+                      {parsedResponse.blocks
+                        .filter(Boolean)
+                        .map((block, idx) => (
+                          <ContentBlockView key={idx} block={block} index={idx} />
+                        ))}
                     </div>
-                  ))}
-                </div>
-              ),
-            },
-          ]}
-        />
-      )}
-
-      {/* Tools */}
-      {parsedRequest?.tools && parsedRequest.tools.length > 0 && (
-        <Collapse
-          ghost
-          style={{ marginTop: 8 }}
-          items={[
-            {
-              key: 'tools',
-              label: (
-                <Space>
-                  <ToolOutlined />
-                  <span>可用工具</span>
-                  <Tag>{parsedRequest.tools.length}</Tag>
-                </Space>
-              ),
-              children: (
-                <div style={{ maxHeight: 400, overflow: 'auto' }}>
-                  {parsedRequest.tools.map((tool: any, i: number) => (
-                    <div
-                      key={i}
-                      style={{
-                        background: '#f0f5ff',
-                        border: '1px solid #d6e4ff',
-                        borderRadius: 8,
-                        padding: 10,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <Space style={{ marginBottom: 4 }}>
-                        <Text code style={{ fontSize: 12, fontWeight: 600 }}>
-                          {tool.name}
-                        </Text>
-                      </Space>
-                      <Paragraph
-                        type="secondary"
-                        style={{ fontSize: 11, margin: 0 }}
-                        ellipsis={{ rows: 2 }}
-                      >
-                        {tool.description}
-                      </Paragraph>
+                  ),
+                },
+              ]
+            : []),
+          ...(parsedRequest && parsedRequest.messages.length > 0
+            ? [
+                {
+                  key: 'messages',
+                  label: (
+                    <Space size={4}>
+                      <ThunderboltOutlined />
+                      <span>请求对话历史</span>
+                      <Tag style={{ margin: 0 }}>{parsedRequest.messages.length}</Tag>
+                    </Space>
+                  ),
+                  children: (
+                    <div>
+                      {parsedRequest.messages.map((msg, idx) => (
+                        <MessageBubble key={idx} msg={msg} index={idx} />
+                      ))}
                     </div>
-                  ))}
-                </div>
-              ),
-            },
-          ]}
-        />
-      )}
+                  ),
+                },
+              ]
+            : []),
+          ...(parsedRequest?.system && parsedRequest.system.length > 0
+            ? [
+                {
+                  key: 'system',
+                  label: (
+                    <Space size={4}>
+                      <span>系统指令</span>
+                      <Tag style={{ margin: 0 }}>{parsedRequest.system.length}</Tag>
+                    </Space>
+                  ),
+                  children: (
+                    <div>
+                      {parsedRequest.system.map((item: any, i: number) => (
+                        <div
+                          key={i}
+                          style={{
+                            background: '#fafafa',
+                            border: '1px solid #f0f0f0',
+                            borderRadius: 8,
+                            padding: 12,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <Tag style={{ marginBottom: 6 }}>{item.type || 'text'}</Tag>
+                          <Paragraph
+                            style={{
+                              whiteSpace: 'pre-wrap',
+                              fontSize: 12,
+                              lineHeight: 1.6,
+                              margin: 0,
+                              maxHeight: 200,
+                              overflow: 'auto',
+                            }}
+                          >
+                            {item.text || JSON.stringify(item, null, 2)}
+                          </Paragraph>
+                        </div>
+                      ))}
+                    </div>
+                  ),
+                },
+              ]
+            : []),
+          ...(parsedRequest?.tools && parsedRequest.tools.length > 0
+            ? [
+                {
+                  key: 'tools',
+                  label: (
+                    <Space size={4}>
+                      <ToolOutlined />
+                      <span>可用工具</span>
+                      <Tag style={{ margin: 0 }}>{parsedRequest.tools.length}</Tag>
+                    </Space>
+                  ),
+                  children: (
+                    <div>
+                      {parsedRequest.tools.map((tool: any, i: number) => (
+                        <div
+                          key={i}
+                          style={{
+                            background: '#f0f5ff',
+                            border: '1px solid #d6e4ff',
+                            borderRadius: 8,
+                            padding: 10,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <Space style={{ marginBottom: 4 }}>
+                            <Text code style={{ fontSize: 12, fontWeight: 600 }}>
+                              {tool.name}
+                            </Text>
+                          </Space>
+                          <Paragraph
+                            type="secondary"
+                            style={{ fontSize: 11, margin: 0 }}
+                            ellipsis={{ rows: 2 }}
+                          >
+                            {tool.description}
+                          </Paragraph>
+                        </div>
+                      ))}
+                    </div>
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
     </div>
   )
 }

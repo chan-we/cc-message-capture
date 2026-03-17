@@ -27,6 +27,7 @@ import {
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { save } from '@tauri-apps/plugin-dialog'
+import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import type { CapturedMessage, ProxyStatus, CertStatus } from '@/types'
 import { isClaudeApiRequest } from '@/services/claudeParser'
 import ClaudeMessageViewer from '@/components/ClaudeMessageViewer'
@@ -302,6 +303,17 @@ export default function Capture() {
     }
   }
 
+  const handleCopyProxyCommand = async () => {
+    try {
+      const certPath = await invoke<string>('get_ca_cert_path')
+      const cmd = `export http_proxy=http://127.0.0.1:${port} && export https_proxy=http://127.0.0.1:${port} && export no_proxy=localhost,127.0.0.1,::1 && export NODE_EXTRA_CA_CERTS=${certPath}`
+      await writeText(cmd)
+      message.success('代理命令已复制，请在终端中粘贴执行')
+    } catch (e) {
+      message.error(`复制失败: ${e}`)
+    }
+  }
+
   const columns = [
     {
       title: '方法',
@@ -443,6 +455,9 @@ export default function Capture() {
               证书状态 <Badge status={certStatus?.installed ? 'success' : 'default'} />
             </Button>
           </Dropdown>
+          <Button icon={<CopyOutlined />} onClick={handleCopyProxyCommand}>
+            复制代理命令
+          </Button>
           <Button
             icon={<DeleteOutlined />}
             onClick={() => {
@@ -475,11 +490,12 @@ export default function Capture() {
           />
         </Splitter.Panel>
         <Splitter.Panel>
-          <div style={{ height: '100%', overflow: 'auto', padding: '0 12px' }}>
+          <div style={{ height: '100%', overflow: 'hidden', padding: '0 12px', display: 'flex', flexDirection: 'column' }}>
             {selected ? (
               <Tabs
                 defaultActiveKey={isClaudeApiRequest(selected) ? 'claude' : 'request'}
                 key={selected.id}
+                style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
                 items={[
                   ...(isClaudeApiRequest(selected)
                     ? [
