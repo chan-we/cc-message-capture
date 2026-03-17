@@ -1,6 +1,6 @@
 [package]
 name = "cc-message-capture"
-version = "0.2.1"
+version = "0.2.2"
 description = "Claude API message capture tool"
 authors = ["you"]
 edition = "2021"
