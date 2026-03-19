@@ -23,12 +23,16 @@ import {
   RobotOutlined,
   DownloadOutlined,
   ToolOutlined,
+  CheckCircleOutlined,
+  CloudDownloadOutlined,
+  GithubOutlined,
 } from '@ant-design/icons'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { save } from '@tauri-apps/plugin-dialog'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
-import type { CapturedMessage, ProxyStatus, CertStatus } from '@/types'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import type { CapturedMessage, ProxyStatus, CertStatus, UpdateInfo } from '@/types'
 import { isClaudeApiRequest } from '@/services/claudeParser'
 import ClaudeMessageViewer from '@/components/ClaudeMessageViewer'
 
@@ -56,6 +60,21 @@ function formatJson(str: string): string {
   } catch {
     return str
   }
+}
+
+function toCurl(msg: CapturedMessage): string {
+  const parts = ['curl']
+  if (msg.method !== 'GET') {
+    parts.push('-X', msg.method)
+  }
+  parts.push(`'${msg.url}'`)
+  for (const [key, value] of Object.entries(msg.request_headers)) {
+    parts.push('-H', `'${key}: ${value}'`)
+  }
+  if (msg.request_body) {
+    parts.push('-d', `'${msg.request_body}'`)
+  }
+  return parts.join(' \\\n  ')
 }
 
 function HeadersTable({ headers }: { headers: Record<string, string> }) {
@@ -118,6 +137,10 @@ export default function Capture() {
   const [mitmdumpInstalled, setMitmdumpInstalled] = useState<boolean | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState({ downloaded: 0, total: 0, stage: '' })
+  const [aboutOpen, setAboutOpen] = useState(false)
+  const [appVersion, setAppVersion] = useState('')
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
   const listenerRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
@@ -131,21 +154,31 @@ export default function Capture() {
       setCertStatus(status)
     })
 
+    // Get app version on mount
+    invoke<string>('get_app_version').then(setAppVersion)
+
     // Check mitmdump installation status on mount
     invoke<boolean>('check_mitmdump').then((installed) => {
       setMitmdumpInstalled(installed)
     })
 
+    let unlistenMenu: (() => void) | null = null
     const setup = async () => {
       const unlisten = await listen<CapturedMessage>('captured-message', (event) => {
         setMessages((prev) => [event.payload, ...prev])
       })
       listenerRef.current = unlisten
+
+      unlistenMenu = await listen('menu-about', () => {
+        setAboutOpen(true)
+        setUpdateInfo(null)
+      })
     }
     setup()
 
     return () => {
       listenerRef.current?.()
+      unlistenMenu?.()
     }
   }, [])
 
@@ -314,6 +347,24 @@ export default function Capture() {
     }
   }
 
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true)
+    setUpdateInfo(null)
+    try {
+      const info = await invoke<UpdateInfo>('check_update')
+      setUpdateInfo(info)
+    } catch (e) {
+      message.error(`检查更新失败: ${e}`)
+    } finally {
+      setCheckingUpdate(false)
+    }
+  }
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  }
+
   const columns = [
     {
       title: '方法',
@@ -473,21 +524,54 @@ export default function Capture() {
       {/* Main content */}
       <Splitter style={{ flex: 1, overflow: 'hidden' }}>
         <Splitter.Panel defaultSize="40%" min="25%" max="70%">
-          <Table
-            dataSource={messages}
-            columns={columns}
-            rowKey="id"
-            size="small"
-            pagination={false}
-            scroll={{ y: 'calc(100vh - 140px)' }}
-            onRow={(record) => ({
-              onClick: () => setSelected(record),
-              style: {
-                cursor: 'pointer',
-                background: selected?.id === record.id ? '#e6f4ff' : undefined,
-              },
-            })}
-          />
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'copy-curl',
+                  icon: <CopyOutlined />,
+                  label: '复制为 cURL',
+                  onClick: () => {
+                    if (selected) {
+                      navigator.clipboard.writeText(toCurl(selected))
+                      message.success('cURL 已复制')
+                    }
+                  },
+                },
+                {
+                  key: 'copy-url',
+                  icon: <CopyOutlined />,
+                  label: '复制 URL',
+                  onClick: () => {
+                    if (selected) {
+                      navigator.clipboard.writeText(selected.url)
+                      message.success('URL 已复制')
+                    }
+                  },
+                },
+              ],
+            }}
+            trigger={['contextMenu']}
+          >
+            <div>
+              <Table
+                dataSource={messages}
+                columns={columns}
+                rowKey="id"
+                size="small"
+                pagination={false}
+                scroll={{ y: 'calc(100vh - 140px)' }}
+                onRow={(record) => ({
+                  onClick: () => setSelected(record),
+                  onContextMenu: () => setSelected(record),
+                  style: {
+                    cursor: 'pointer',
+                    background: selected?.id === record.id ? '#e6f4ff' : undefined,
+                  },
+                })}
+              />
+            </div>
+          </Dropdown>
         </Splitter.Panel>
         <Splitter.Panel>
           <div style={{ height: '100%', overflow: 'hidden', padding: '0 12px', display: 'flex', flexDirection: 'column' }}>
@@ -564,6 +648,77 @@ export default function Capture() {
           </div>
         </Splitter.Panel>
       </Splitter>
+
+      <Modal
+        title="关于"
+        open={aboutOpen}
+        onCancel={() => setAboutOpen(false)}
+        footer={null}
+        width={480}
+      >
+        <div style={{ textAlign: 'center', padding: '16px 0 8px' }}>
+          <h2 style={{ margin: '0 0 4px' }}>CC Message Capture</h2>
+          <p style={{ color: '#999', margin: '0 0 16px' }}>当前版本: v{appVersion}</p>
+          <Button
+            type="primary"
+            icon={<CloudDownloadOutlined />}
+            loading={checkingUpdate}
+            onClick={handleCheckUpdate}
+          >
+            检查更新
+          </Button>
+        </div>
+
+        {updateInfo && (
+          <div style={{ marginTop: 16 }}>
+            {updateInfo.has_update ? (
+              <>
+                <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 6, padding: 12, marginBottom: 12 }}>
+                  <p style={{ margin: 0, fontWeight: 500 }}>
+                    发现新版本: v{updateInfo.latest_version}
+                  </p>
+                  {updateInfo.release_notes && (
+                    <p style={{ margin: '8px 0 0', fontSize: 13, color: '#666', whiteSpace: 'pre-wrap' }}>
+                      {updateInfo.release_notes}
+                    </p>
+                  )}
+                </div>
+                {updateInfo.assets.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <p style={{ margin: '0 0 8px', fontWeight: 500, fontSize: 13 }}>下载安装包:</p>
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                      {updateInfo.assets.map((asset) => (
+                        <Button
+                          key={asset.name}
+                          icon={<DownloadOutlined />}
+                          block
+                          onClick={() => openUrl(asset.download_url)}
+                        >
+                          {asset.name} ({formatSize(asset.size)})
+                        </Button>
+                      ))}
+                    </Space>
+                  </div>
+                )}
+                <div style={{ textAlign: 'center' }}>
+                  <Button
+                    type="link"
+                    icon={<GithubOutlined />}
+                    onClick={() => openUrl(updateInfo.release_url)}
+                  >
+                    前往 GitHub Release 页面
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                <CheckCircleOutlined style={{ fontSize: 24, color: '#52c41a', marginBottom: 8 }} />
+                <p style={{ margin: 0, color: '#666' }}>当前已是最新版本</p>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
 
       <Modal
         title="正在下载 mitmproxy"

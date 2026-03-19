@@ -3,8 +3,28 @@ mod download;
 mod proxy;
 
 use std::sync::{Arc, Mutex};
-use tauri::Manager;
+use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+use tauri::{Emitter, Manager};
 use tracing_subscriber::EnvFilter;
+
+const GITHUB_REPO: &str = "chan-we/cc-message-capture";
+
+#[derive(serde::Serialize)]
+struct ReleaseAsset {
+    name: String,
+    download_url: String,
+    size: u64,
+}
+
+#[derive(serde::Serialize)]
+struct UpdateInfo {
+    has_update: bool,
+    current_version: String,
+    latest_version: String,
+    release_url: String,
+    release_notes: String,
+    assets: Vec<ReleaseAsset>,
+}
 
 /// Helper function to find mitmdump binary path.
 /// Priority: app_data_dir (downloaded) > platform-specific fallbacks.
@@ -251,6 +271,84 @@ async fn cancel_download() -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn get_app_version(app: tauri::AppHandle) -> Result<String, String> {
+    let version = app.config().version.clone().unwrap_or_default();
+    Ok(version)
+}
+
+#[tauri::command]
+async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
+    let current_version = app.config().version.clone().unwrap_or_default();
+
+    let client = reqwest::Client::builder()
+        .user_agent("cc-message-capture")
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+
+    let url = format!("https://api.github.com/repos/{}/releases/latest", GITHUB_REPO);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("请求 GitHub API 失败: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("GitHub API 返回错误: {}", resp.status()));
+    }
+
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("解析响应失败: {}", e))?;
+
+    let latest_version = json["tag_name"]
+        .as_str()
+        .unwrap_or("")
+        .trim_start_matches('v')
+        .to_string();
+
+    let release_url = json["html_url"].as_str().unwrap_or("").to_string();
+    let release_notes = json["body"].as_str().unwrap_or("").to_string();
+
+    let assets = json["assets"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|a| {
+                    let name = a["name"].as_str()?.to_string();
+                    // Only include installable assets
+                    if name.ends_with(".dmg")
+                        || name.ends_with(".msi")
+                        || name.ends_with(".exe")
+                        || name.ends_with(".deb")
+                        || name.ends_with(".AppImage")
+                    {
+                        Some(ReleaseAsset {
+                            name,
+                            download_url: a["browser_download_url"].as_str()?.to_string(),
+                            size: a["size"].as_u64().unwrap_or(0),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let has_update = !latest_version.is_empty() && latest_version != current_version;
+
+    Ok(UpdateInfo {
+        has_update,
+        current_version,
+        latest_version,
+        release_url,
+        release_notes,
+        assets,
+    })
+}
+
+#[tauri::command]
 async fn check_cert_status() -> Result<cert::CertStatus, String> {
     Ok(cert::check_cert_installed())
 }
@@ -272,6 +370,38 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let about_item = MenuItemBuilder::with_id("about", "关于 CC Message Capture")
+                .build(app)?;
+            let app_submenu = SubmenuBuilder::new(app, "CC Message Capture")
+                .item(&about_item)
+                .separator()
+                .quit()
+                .build()?;
+            let edit_submenu = SubmenuBuilder::new(app, "编辑")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+            let menu = MenuBuilder::new(app)
+                .item(&app_submenu)
+                .item(&edit_submenu)
+                .build()?;
+            app.set_menu(menu)?;
+
+            let app_handle = app.handle().clone();
+            app.on_menu_event(move |_window, event| {
+                if event.id() == "about" {
+                    let _ = app_handle.emit("menu-about", ());
+                }
+            });
+            Ok(())
+        })
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             start_proxy,
@@ -286,6 +416,8 @@ pub fn run() {
             download_mitmdump,
             uninstall_mitmdump,
             cancel_download,
+            get_app_version,
+            check_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
