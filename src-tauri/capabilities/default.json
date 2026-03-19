@@ -10,6 +10,7 @@
     "core:event:allow-emit",
     "dialog:allow-save",
     "dialog:default",
-    "clipboard-manager:allow-write-text"
+    "clipboard-manager:allow-write-text",
+    "opener:allow-open-url"
   ]
 }

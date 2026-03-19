@@ -22,6 +22,21 @@ export interface CertStatus {
   details: string
 }
 
+export interface ReleaseAsset {
+  name: string
+  download_url: string
+  size: number
+}
+
+export interface UpdateInfo {
+  has_update: boolean
+  current_version: string
+  latest_version: string
+  release_url: string
+  release_notes: string
+  assets: ReleaseAsset[]
+}
+
 // Claude SSE / Message types
 
 export interface SSEEvent {
